@@ -1,0 +1,12 @@
+{
+  "name": "bolao-dos-guri",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "check": "node --check app.js && node --check server/db.js && node --check server/http.js && node --check server/auth.js && node --check server/bolao.js && node --check api/state.js && node --check api/predictions.js && node --check api/results.js && node --check api/auth/register.js && node --check api/auth/login.js && node --check api/auth/logout.js",
+    "dev": "npx vercel dev --listen 5173"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}

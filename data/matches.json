@@ -1,0 +1,68 @@
+[
+  {
+    "id": "2026-06-11-mex-rsa",
+    "date": "2026-06-11",
+    "time": "16:00",
+    "home": "México",
+    "away": "África do Sul",
+    "group": "Grupo A",
+    "stage": "Fase de grupos",
+    "venue": "Estádio Cidade do México",
+    "knockout": false
+  },
+  {
+    "id": "2026-06-11-kor-cze",
+    "date": "2026-06-11",
+    "time": "23:00",
+    "home": "Coreia do Sul",
+    "away": "Tchéquia",
+    "group": "Grupo A",
+    "stage": "Fase de grupos",
+    "venue": "Estádio Akron",
+    "knockout": false
+  },
+  {
+    "id": "2026-06-18-mex-kor",
+    "date": "2026-06-18",
+    "time": "22:00",
+    "home": "México",
+    "away": "Coreia do Sul",
+    "group": "Grupo A",
+    "stage": "Fase de grupos",
+    "venue": "Estádio Akron",
+    "knockout": false
+  },
+  {
+    "id": "2026-06-24-mex-cze",
+    "date": "2026-06-24",
+    "time": "22:00",
+    "home": "México",
+    "away": "Tchéquia",
+    "group": "Grupo A",
+    "stage": "Fase de grupos",
+    "venue": "Estádio Cidade do México",
+    "knockout": false
+  },
+  {
+    "id": "2026-06-30-r32-a",
+    "date": "2026-06-30",
+    "time": "17:00",
+    "home": "1º Grupo A",
+    "away": "3º Grupo C/D/E",
+    "group": "Jogo 73",
+    "stage": "Eliminatória",
+    "venue": "A definir",
+    "knockout": true
+  },
+  {
+    "id": "2026-07-04-r16-a",
+    "date": "2026-07-04",
+    "time": "21:00",
+    "home": "Vencedor Jogo 73",
+    "away": "Vencedor Jogo 74",
+    "group": "Jogo 85",
+    "stage": "Eliminatória",
+    "venue": "A definir",
+    "knockout": true
+  }
+]

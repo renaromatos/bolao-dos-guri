@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bolão dos Guri</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <div class="field-overlay" aria-hidden="true"></div>
+
+    <div class="page-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <span class="tournament-badge">Copa 2026</span>
+          <h1>Bolão dos Guri</h1>
+          <p>Resenha, placar cravado e provocação liberada.</p>
+        </div>
+
+        <div class="matchday-card" aria-live="polite">
+          <span class="matchday-label">Rodada</span>
+          <strong id="currentDateLabel">Hoje</strong>
+          <span id="matchdayCount">0 jogos</span>
+        </div>
+      </header>
+
+      <main class="app-grid">
+        <section class="panel auth-panel" aria-labelledby="authTitle">
+          <div class="panel-header">
+            <div>
+              <span class="section-kicker">Conta</span>
+              <h2 id="authTitle">Entrada</h2>
+            </div>
+            <span class="status-dot" id="sessionStatus" aria-label="Sessão"></span>
+          </div>
+
+          <div id="signedInCard" class="signed-card" hidden>
+            <span class="avatar" id="userAvatar">BG</span>
+            <div>
+              <strong id="signedName">Visitante</strong>
+              <span id="signedStats">0 palpites feitos</span>
+            </div>
+            <button class="icon-button" type="button" id="logoutButton" title="Sair">
+              <span aria-hidden="true">×</span>
+            </button>
+          </div>
+
+          <div id="authBox">
+            <div class="tabs" role="tablist" aria-label="Acesso">
+              <button class="tab-button is-active" type="button" id="registerTab" role="tab" aria-selected="true">
+                Cadastro
+              </button>
+              <button class="tab-button" type="button" id="loginTab" role="tab" aria-selected="false">
+                Login
+              </button>
+            </div>
+
+            <form id="authForm" class="stack-form">
+              <label>
+                Nome
+                <input id="nameInput" name="name" autocomplete="username" maxlength="32" required />
+              </label>
+              <label>
+                Senha
+                <input id="passwordInput" name="password" type="password" autocomplete="current-password" minlength="4" required />
+              </label>
+              <button class="primary-button" type="submit" id="authSubmit">
+                <span aria-hidden="true">+</span>
+                Cadastrar
+              </button>
+              <p class="form-message" id="authMessage" role="alert"></p>
+            </form>
+          </div>
+
+          <div class="summary-grid">
+            <div>
+              <span id="totalUsers">0</span>
+              <strong>jogadores</strong>
+            </div>
+            <div>
+              <span id="totalPredictions">0</span>
+              <strong>palpites</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel matches-panel" aria-labelledby="matchesTitle">
+          <div class="panel-header matches-header">
+            <div>
+              <span class="section-kicker">Agenda</span>
+              <h2 id="matchesTitle">Jogos do dia</h2>
+            </div>
+            <div class="date-controls">
+              <button class="ghost-button" type="button" id="todayButton">Hoje</button>
+              <label class="select-label">
+                Data
+                <select id="dateSelect"></select>
+              </label>
+            </div>
+          </div>
+
+          <div class="match-list" id="matchList"></div>
+        </section>
+
+        <aside class="side-stack">
+          <section class="panel bet-panel" aria-labelledby="betTitle">
+            <div class="panel-header">
+              <div>
+                <span class="section-kicker">Palpite</span>
+                <h2 id="betTitle">Placar</h2>
+              </div>
+              <span class="match-chip" id="selectedStage">Selecione</span>
+            </div>
+
+            <div id="selectedMatchSummary" class="selected-match"></div>
+
+            <form id="predictionForm" class="score-form">
+              <div class="score-row">
+                <label>
+                  <span id="homeScoreLabel">Mandante</span>
+                  <input id="homeScoreInput" type="number" min="0" max="30" inputmode="numeric" required />
+                </label>
+                <span class="score-separator">×</span>
+                <label>
+                  <span id="awayScoreLabel">Visitante</span>
+                  <input id="awayScoreInput" type="number" min="0" max="30" inputmode="numeric" required />
+                </label>
+              </div>
+
+              <fieldset class="penalty-box" id="penaltyBox" hidden>
+                <legend>Vencedor nos penais</legend>
+                <label>
+                  <input type="radio" name="penaltyWinner" value="home" />
+                  <span id="penaltyHomeLabel">Mandante</span>
+                </label>
+                <label>
+                  <input type="radio" name="penaltyWinner" value="away" />
+                  <span id="penaltyAwayLabel">Visitante</span>
+                </label>
+              </fieldset>
+
+              <button class="primary-button" type="submit" id="savePredictionButton">
+                <span aria-hidden="true">✓</span>
+                Salvar palpite
+              </button>
+              <p class="form-message" id="predictionMessage" role="alert"></p>
+            </form>
+          </section>
+
+          <section class="panel ranking-panel" aria-labelledby="rankingTitle">
+            <div class="panel-header">
+              <div>
+                <span class="section-kicker">Tabela</span>
+                <h2 id="rankingTitle">Ranking</h2>
+              </div>
+              <span class="match-chip" id="completedCount">0 finais</span>
+            </div>
+
+            <ol class="ranking-list" id="rankingList"></ol>
+          </section>
+
+          <section class="panel admin-panel" aria-labelledby="adminTitle">
+            <details>
+              <summary id="adminTitle">Lançar resultado</summary>
+              <form id="resultForm" class="stack-form admin-form">
+                <label>
+                  PIN admin
+                  <input id="adminPinInput" type="password" autocomplete="off" placeholder="Defina ADMIN_PIN na Vercel" required />
+                </label>
+
+                <label>
+                  Jogo
+                  <select id="resultMatchSelect"></select>
+                </label>
+
+                <div class="score-row compact">
+                  <label>
+                    <span id="resultHomeLabel">Mandante</span>
+                    <input id="resultHomeInput" type="number" min="0" max="30" inputmode="numeric" required />
+                  </label>
+                  <span class="score-separator">×</span>
+                  <label>
+                    <span id="resultAwayLabel">Visitante</span>
+                    <input id="resultAwayInput" type="number" min="0" max="30" inputmode="numeric" required />
+                  </label>
+                </div>
+
+                <fieldset class="penalty-box" id="resultPenaltyBox" hidden>
+                  <legend>Vencedor nos penais</legend>
+                  <label>
+                    <input type="radio" name="resultPenaltyWinner" value="home" />
+                    <span id="resultPenaltyHomeLabel">Mandante</span>
+                  </label>
+                  <label>
+                    <input type="radio" name="resultPenaltyWinner" value="away" />
+                    <span id="resultPenaltyAwayLabel">Visitante</span>
+                  </label>
+                </fieldset>
+
+                <div class="button-row">
+                  <button class="primary-button" type="submit">
+                    <span aria-hidden="true">✓</span>
+                    Salvar
+                  </button>
+                  <button class="ghost-button" type="button" id="clearResultButton">Limpar</button>
+                </div>
+                <p class="form-message" id="resultMessage" role="alert"></p>
+              </form>
+            </details>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>
