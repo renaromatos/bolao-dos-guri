@@ -44,16 +44,18 @@ let pool;
 let schemaReady;
 
 function getPool() {
-  if (!process.env.DATABASE_URL) {
-    throw Object.assign(new Error("DATABASE_URL não configurada."), {
-      publicMessage: "DATABASE_URL não configurada.",
+  const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+
+  if (!connectionString) {
+    throw Object.assign(new Error("DATABASE_URL/POSTGRES_URL não configurada."), {
+      publicMessage: "DATABASE_URL ou POSTGRES_URL não configurada.",
       statusCode: 500,
     });
   }
 
   if (!pool) {
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString,
       ssl: process.env.POSTGRES_DISABLE_SSL === "true" ? false : { rejectUnauthorized: false },
     });
   }

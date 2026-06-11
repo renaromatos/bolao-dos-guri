@@ -35,6 +35,8 @@ DATABASE_URL=postgres://...
 ADMIN_PIN=um-pin-para-lancar-resultados
 ```
 
+O app também aceita `POSTGRES_URL` no lugar de `DATABASE_URL`, caso a integração do Postgres tenha criado essa variável.
+
 Para Postgres local sem SSL, adicione:
 
 ```text
