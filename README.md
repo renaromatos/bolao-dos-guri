@@ -7,6 +7,7 @@ Site para bolão da Copa do Mundo entre amigos, pronto para hospedar na Vercel c
 - Cadastro e login com nome e senha.
 - Sessão por token armazenada no navegador.
 - Jogos do dia e seleção por data.
+- Calendário carregado de uma fonte pública da Copa 2026.
 - Palpite de placar por jogo.
 - Bloqueio de palpites quando o jogo começa.
 - Empate em eliminatórias com escolha do vencedor nos penais.
@@ -67,3 +68,20 @@ Depois acesse `http://localhost:5173`.
 5. Faça o deploy.
 
 Os jogos ficam em `data/matches.json`.
+
+## Fonte dos jogos
+
+Por padrão, o site busca o calendário em:
+
+```text
+https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json
+```
+
+A fonte é o projeto público `openfootball/worldcup.json`, sem API key. O app converte os horários para BRT e usa `data/matches.json` como fallback se a fonte externa falhar.
+
+Variáveis opcionais:
+
+```text
+MATCHES_API_URL=https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json
+MATCHES_CACHE_MS=3600000
+```

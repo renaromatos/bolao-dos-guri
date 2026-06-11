@@ -33,7 +33,7 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    const { match, penaltyWinner, score } = validateResultPayload(body);
+    const { match, penaltyWinner, score } = await validateResultPayload(body);
     await query(
       `INSERT INTO results (match_id, home_score, away_score, penalty_winner, updated_at)
        VALUES ($1, $2, $3, $4, now())

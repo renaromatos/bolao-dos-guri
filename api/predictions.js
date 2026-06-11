@@ -9,7 +9,7 @@ module.exports = async function handler(req, res) {
   try {
     const user = await requireUser(getBearerToken(req));
     const body = await readJsonBody(req);
-    const { match, penaltyWinner, score } = validatePredictionPayload(body);
+    const { match, penaltyWinner, score } = await validatePredictionPayload(body);
 
     await query(
       `INSERT INTO predictions (user_id, match_id, home_score, away_score, penalty_winner, updated_at)

@@ -3,7 +3,6 @@ const STORAGE_KEYS = {
 };
 
 const APP_TIME_ZONE = "America/Sao_Paulo";
-const MATCH_TIME_OFFSET = "-03:00";
 const LIVE_REFRESH_MS = 15_000;
 
 const state = {
@@ -15,6 +14,7 @@ const state = {
   followToday: true,
   loading: true,
   matches: [],
+  matchesSource: "",
   ranking: [],
   results: {},
   selectedDate: "",
@@ -130,6 +130,7 @@ async function refreshState({ silent = false } = {}) {
     state.currentUser = data.currentUser || null;
     state.currentUserPredictions = data.currentUserPredictions || {};
     state.matches = data.matches || [];
+    state.matchesSource = data.matchesSource || "";
     state.ranking = data.ranking || [];
     state.results = data.results || {};
     state.todayDate = data.todayDate || getTodayDate();
@@ -727,7 +728,7 @@ function hasMatchStarted(match, now = new Date()) {
 }
 
 function getKickoffDate(match) {
-  return new Date(`${match.date}T${match.time}:00${MATCH_TIME_OFFSET}`);
+  return match.kickoffAt ? new Date(match.kickoffAt) : new Date(`${match.date}T${match.time}:00-03:00`);
 }
 
 function getBettingStatusText(match) {

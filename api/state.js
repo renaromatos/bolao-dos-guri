@@ -3,8 +3,9 @@ const { getUserByToken } = require("../server/auth");
 const { query } = require("../server/db");
 const {
   calculateRanking,
+  getMatches,
+  getMatchesSource,
   getTodayDate,
-  matches,
   predictionRowsToMap,
   resultRowsToMap,
 } = require("../server/bolao");
@@ -15,6 +16,7 @@ module.exports = async function handler(req, res) {
   try {
     const token = getBearerToken(req);
     const currentUser = await getUserByToken(token);
+    const matches = await getMatches();
     const [usersResult, predictionsResult, resultsResult, totalPredictionsResult] = await Promise.all([
       query("SELECT id, name, created_at FROM users ORDER BY name ASC"),
       query("SELECT user_id, match_id, home_score, away_score, penalty_winner FROM predictions"),
@@ -31,7 +33,8 @@ module.exports = async function handler(req, res) {
       currentUser,
       currentUserPredictions,
       matches,
-      ranking: calculateRanking(usersResult.rows, predictionsResult.rows, resultsResult.rows),
+      matchesSource: getMatchesSource(),
+      ranking: calculateRanking(usersResult.rows, predictionsResult.rows, resultsResult.rows, matches),
       results: resultRowsToMap(resultsResult.rows),
       serverNow: new Date().toISOString(),
       todayDate: getTodayDate(),
