@@ -9,10 +9,11 @@ Site para bolão da Copa do Mundo entre amigos, pronto para hospedar na Vercel c
 - Jogos do dia e seleção por data.
 - Calendário carregado de uma fonte pública da Copa 2026.
 - Palpite de placar por jogo.
+- Formulário de palpite aberto dentro do card selecionado.
 - Bloqueio de palpites quando o jogo começa.
 - Empate em eliminatórias com escolha do vencedor nos penais.
 - Empate na fase de grupos sem penais.
-- Lançamento de resultados com PIN de admin.
+- Resultados atualizados automaticamente pela API-Football.
 - Ranking compartilhado entre todos os usuários.
 
 ## Pontuação
@@ -32,7 +33,7 @@ Variáveis de ambiente necessárias:
 
 ```text
 DATABASE_URL=postgres://...
-ADMIN_PIN=um-pin-para-lancar-resultados
+API_FOOTBALL_KEY=sua-chave-api-football
 ```
 
 O app também aceita `POSTGRES_URL` no lugar de `DATABASE_URL`, caso a integração do Postgres tenha criado essa variável.
@@ -51,7 +52,7 @@ Instale as dependências:
 npm install
 ```
 
-Crie `.env.local` com `DATABASE_URL` e `ADMIN_PIN`.
+Crie `.env.local` com `DATABASE_URL` e `API_FOOTBALL_KEY`.
 
 Rode com Vercel Dev, para que as funções `/api/*` funcionem:
 
@@ -66,7 +67,7 @@ Depois acesse `http://localhost:5173`.
 1. Suba o projeto para o GitHub.
 2. Importe o repositório na Vercel.
 3. Adicione um banco Postgres e configure `DATABASE_URL`.
-4. Configure `ADMIN_PIN`.
+4. Configure `API_FOOTBALL_KEY`.
 5. Faça o deploy.
 
 Os jogos ficam em `data/matches.json`.
@@ -86,4 +87,21 @@ Variáveis opcionais:
 ```text
 MATCHES_API_URL=https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json
 MATCHES_CACHE_MS=3600000
+```
+
+## Fonte dos resultados
+
+Os placares são buscados na API-Football usando:
+
+```text
+league=1
+season=2026
+```
+
+O servidor consulta os jogos de hoje e de ontem. Um registro no Postgres impede novas chamadas antes de completar uma hora, mesmo que vários usuários abram o site ao mesmo tempo.
+
+Variável opcional:
+
+```text
+RESULTS_SYNC_INTERVAL_MS=3600000
 ```

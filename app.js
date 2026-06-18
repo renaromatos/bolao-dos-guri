@@ -17,9 +17,9 @@ const state = {
   matchesSource: "",
   ranking: [],
   results: {},
+  resultsSync: null,
   selectedDate: "",
   selectedMatchId: "",
-  selectedResultMatchId: "",
   session: null,
   todayDate: "",
   totalPredictions: 0,
@@ -67,32 +67,8 @@ function bindElements() {
     "todayButton",
     "dateSelect",
     "matchList",
-    "selectedStage",
-    "selectedMatchSummary",
-    "predictionForm",
-    "homeScoreLabel",
-    "awayScoreLabel",
-    "homeScoreInput",
-    "awayScoreInput",
-    "penaltyBox",
-    "penaltyHomeLabel",
-    "penaltyAwayLabel",
-    "savePredictionButton",
-    "predictionMessage",
     "completedCount",
     "rankingList",
-    "resultForm",
-    "adminPinInput",
-    "resultMatchSelect",
-    "resultHomeLabel",
-    "resultAwayLabel",
-    "resultHomeInput",
-    "resultAwayInput",
-    "resultPenaltyBox",
-    "resultPenaltyHomeLabel",
-    "resultPenaltyAwayLabel",
-    "clearResultButton",
-    "resultMessage",
     "toast",
   ].forEach((id) => {
     els[id] = document.getElementById(id);
@@ -106,18 +82,14 @@ function bindEvents() {
   els.logoutButton.addEventListener("click", handleLogout);
   els.todayButton.addEventListener("click", selectToday);
   els.dateSelect.addEventListener("change", handleDateChange);
-  els.matchList.addEventListener("click", handleMatchClick);
-  els.predictionForm.addEventListener("submit", handlePredictionSubmit);
-  els.homeScoreInput.addEventListener("input", updatePenaltyVisibility);
-  els.awayScoreInput.addEventListener("input", updatePenaltyVisibility);
-  els.resultMatchSelect.addEventListener("change", handleResultMatchChange);
-  els.resultForm.addEventListener("submit", handleResultSubmit);
-  els.resultHomeInput.addEventListener("input", updateResultPenaltyVisibility);
-  els.resultAwayInput.addEventListener("input", updateResultPenaltyVisibility);
-  els.clearResultButton.addEventListener("click", clearSelectedResult);
+  els.matchList.addEventListener("click", handleMatchListClick);
+  els.matchList.addEventListener("input", handleMatchListInput);
+  els.matchList.addEventListener("submit", handleMatchListSubmit);
 }
 
 async function refreshState({ silent = false } = {}) {
+  const draft = silent ? readOpenPredictionDraft() : null;
+
   if (!silent) {
     state.loading = true;
     render();
@@ -133,6 +105,7 @@ async function refreshState({ silent = false } = {}) {
     state.matchesSource = data.matchesSource || "";
     state.ranking = data.ranking || [];
     state.results = data.results || {};
+    state.resultsSync = data.resultsSync || null;
     state.todayDate = data.todayDate || getTodayDate();
     state.totalPredictions = data.totalPredictions || 0;
     state.users = data.users || [];
@@ -147,12 +120,12 @@ async function refreshState({ silent = false } = {}) {
     }
 
     syncSelectedMatchToDate();
-    syncSelectedResultMatch();
   } catch (error) {
     state.apiError = error.message;
   } finally {
     state.loading = false;
     render();
+    restoreOpenPredictionDraft(draft);
   }
 }
 
@@ -165,28 +138,43 @@ function startLiveRefresh() {
 function selectToday() {
   state.followToday = true;
   state.selectedDate = state.todayDate || getTodayDate();
-  syncSelectedMatchToDate();
+  state.selectedMatchId = "";
   render();
 }
 
 function handleDateChange(event) {
   state.selectedDate = event.target.value;
   state.followToday = state.selectedDate === state.todayDate;
-  syncSelectedMatchToDate();
+  state.selectedMatchId = "";
   render();
 }
 
-function handleMatchClick(event) {
-  const card = event.target.closest("[data-match-id]");
-  if (!card) return;
+function handleMatchListClick(event) {
+  const toggle = event.target.closest('[data-action="toggle-match"]');
+  if (!toggle) return;
 
-  state.selectedMatchId = card.dataset.matchId;
-  render();
+  const matchId = toggle.dataset.matchId;
+  state.selectedMatchId = state.selectedMatchId === matchId ? "" : matchId;
+  renderMatches();
+}
+
+function handleMatchListInput(event) {
+  const form = event.target.closest(".inline-prediction-form");
+  if (!form) return;
+  updateInlinePenaltyVisibility(form);
+}
+
+function handleMatchListSubmit(event) {
+  const form = event.target.closest(".inline-prediction-form");
+  if (!form) return;
+
+  event.preventDefault();
+  handlePredictionSubmit(form);
 }
 
 async function handleAuthSubmit(event) {
   event.preventDefault();
-  clearMessages();
+  clearAuthMessage();
 
   const name = els.nameInput.value.trim();
   const password = els.passwordInput.value;
@@ -214,48 +202,54 @@ async function handleLogout() {
   try {
     await apiFetch("/api/auth/logout", { method: "POST" });
   } catch {
-    // Mesmo se a sessão já expirou no servidor, limpamos a sessão local.
+    // Mesmo se a sessão expirou no servidor, limpamos a sessão local.
   }
 
   clearStoredSession();
   state.session = null;
   state.currentUser = null;
   state.currentUserPredictions = {};
+  state.selectedMatchId = "";
   showToast("Sessão encerrada.");
   await refreshState();
 }
 
-async function handlePredictionSubmit(event) {
-  event.preventDefault();
-  clearMessages();
+async function handlePredictionSubmit(form) {
+  const message = form.querySelector("[data-prediction-message]");
+  setMessage(message, "");
 
   if (!state.currentUser) {
-    setMessage(els.predictionMessage, "Entre com seu nome para salvar.");
+    setMessage(message, "Entre com seu nome para salvar.");
     return;
   }
 
-  const match = getSelectedMatch();
+  const match = getMatchById(form.dataset.matchId);
   if (!match) {
-    setMessage(els.predictionMessage, "Selecione um jogo para palpitar.");
+    setMessage(message, "Jogo não encontrado.");
     return;
   }
 
   if (hasMatchStarted(match)) {
-    setMessage(els.predictionMessage, "Esse jogo já começou. Palpites encerrados.");
+    setMessage(message, "Esse jogo já começou. Palpites encerrados.");
     return;
   }
 
-  const score = readScore(els.homeScoreInput, els.awayScoreInput);
+  const homeInput = form.querySelector('[name="homeScore"]');
+  const awayInput = form.querySelector('[name="awayScore"]');
+  const score = readScore(homeInput, awayInput);
   if (!score) {
-    setMessage(els.predictionMessage, "Informe um placar válido.");
+    setMessage(message, "Informe um placar válido.");
     return;
   }
 
-  const penaltyWinner = getSelectedRadioValue("penaltyWinner");
+  const penaltyWinner = form.querySelector("[data-penalty-winner]:checked")?.value || "";
   if (match.knockout && score.homeScore === score.awayScore && !penaltyWinner) {
-    setMessage(els.predictionMessage, "Escolha o vencedor nos penais.");
+    setMessage(message, "Escolha o vencedor nos penais.");
     return;
   }
+
+  const saveButton = form.querySelector('button[type="submit"]');
+  saveButton.disabled = true;
 
   try {
     await apiFetch("/api/predictions", {
@@ -272,75 +266,8 @@ async function handlePredictionSubmit(event) {
     await refreshState();
   } catch (error) {
     handleSessionError(error);
-    setMessage(els.predictionMessage, error.message);
-  }
-}
-
-function handleResultMatchChange(event) {
-  state.selectedResultMatchId = event.target.value;
-  renderResultForm();
-}
-
-async function handleResultSubmit(event) {
-  event.preventDefault();
-  clearMessages();
-
-  const match = getMatchById(state.selectedResultMatchId);
-  if (!match) {
-    setMessage(els.resultMessage, "Selecione um jogo válido.");
-    return;
-  }
-
-  const score = readScore(els.resultHomeInput, els.resultAwayInput);
-  if (!score) {
-    setMessage(els.resultMessage, "Informe um resultado válido.");
-    return;
-  }
-
-  const penaltyWinner = getSelectedRadioValue("resultPenaltyWinner");
-  if (match.knockout && score.homeScore === score.awayScore && !penaltyWinner) {
-    setMessage(els.resultMessage, "Escolha o vencedor nos penais.");
-    return;
-  }
-
-  try {
-    await apiFetch("/api/results", {
-      body: {
-        awayScore: score.awayScore,
-        homeScore: score.homeScore,
-        matchId: match.id,
-        penaltyWinner: match.knockout && score.homeScore === score.awayScore ? penaltyWinner : "",
-      },
-      headers: getAdminHeaders(),
-      method: "POST",
-      skipAuth: true,
-    });
-
-    showToast("Resultado atualizado.");
-    await refreshState();
-  } catch (error) {
-    setMessage(els.resultMessage, error.message);
-  }
-}
-
-async function clearSelectedResult() {
-  clearMessages();
-
-  const match = getMatchById(state.selectedResultMatchId);
-  if (!match) return;
-
-  try {
-    await apiFetch("/api/results", {
-      body: { matchId: match.id },
-      headers: getAdminHeaders(),
-      method: "DELETE",
-      skipAuth: true,
-    });
-
-    showToast("Resultado removido.");
-    await refreshState();
-  } catch (error) {
-    setMessage(els.resultMessage, error.message);
+    setMessage(message, error.message);
+    saveButton.disabled = false;
   }
 }
 
@@ -349,10 +276,7 @@ function render() {
   renderStats();
   renderDateOptions();
   renderMatches();
-  renderPredictionForm();
   renderRanking();
-  renderResultOptions();
-  renderResultForm();
 }
 
 function renderAuth() {
@@ -381,7 +305,7 @@ function renderAuth() {
 
 function setAuthMode(mode) {
   state.authMode = mode;
-  clearMessages();
+  clearAuthMessage();
   renderAuth();
 }
 
@@ -422,38 +346,127 @@ function renderMatches() {
     return;
   }
 
-  els.matchList.innerHTML = matches
-    .map((match) => {
-      const prediction = state.currentUserPredictions[match.id];
-      const result = state.results[match.id];
-      const locked = hasMatchStarted(match);
-      const active = match.id === state.selectedMatchId ? " is-active" : "";
-      const lockedClass = locked ? " is-locked" : "";
-      const predictionText = prediction ? formatPrediction(match, prediction) : "Sem palpite";
-      const resultText = result ? `Final: ${result.homeScore} x ${result.awayScore}${formatPenaltySuffix(match, result)}` : "Aberto";
+  els.matchList.innerHTML = matches.map(renderMatchCard).join("");
+}
 
-      return `
-        <button class="match-card${active}${lockedClass}" type="button" data-match-id="${match.id}">
-          <div class="match-meta">
-            <span>${escapeHTML(match.time)} BRT</span>
-            <span>${escapeHTML(match.group)}</span>
-            <span>${match.knockout ? "Mata-mata" : "Grupo"}</span>
-          </div>
-          <div class="team-row">
-            ${renderTeamLine(match.home, result?.homeScore, "home")}
-            ${renderTeamLine(match.away, result?.awayScore, "away")}
-          </div>
-          <div class="prediction-status">
-            <span>${escapeHTML(predictionText)}</span>
-            <span class="${locked ? "locked-chip" : ""}">${escapeHTML(getBettingStatusText(match))}</span>
-          </div>
-          <div class="result-status">
-            <span>${escapeHTML(resultText)}</span>
-          </div>
-        </button>
-      `;
-    })
-    .join("");
+function renderMatchCard(match) {
+  const prediction = state.currentUserPredictions[match.id];
+  const result = state.results[match.id];
+  const locked = hasMatchStarted(match);
+  const active = match.id === state.selectedMatchId;
+  const predictionText = prediction ? formatPrediction(match, prediction) : "Sem palpite";
+  const resultText = result
+    ? `Final: ${result.homeScore} x ${result.awayScore}${formatPenaltySuffix(match, result)}`
+    : "Aguardando resultado";
+
+  return `
+    <article class="match-card${active ? " is-active" : ""}${locked ? " is-locked" : ""}">
+      <button
+        class="match-card-toggle"
+        type="button"
+        data-action="toggle-match"
+        data-match-id="${escapeHTML(match.id)}"
+        aria-expanded="${active}"
+      >
+        <div class="match-meta">
+          <span>${escapeHTML(match.time)} BRT</span>
+          <span>${escapeHTML(match.group)}</span>
+          <span>${match.knockout ? "Mata-mata" : "Grupo"}</span>
+        </div>
+        <div class="team-row">
+          ${renderTeamLine(match.home, result?.homeScore, "home")}
+          ${renderTeamLine(match.away, result?.awayScore, "away")}
+        </div>
+        <div class="prediction-status">
+          <span>${escapeHTML(predictionText)}</span>
+          <span class="${locked ? "locked-chip" : ""}">${escapeHTML(getBettingStatusText(match))}</span>
+        </div>
+        <div class="result-status">
+          <span>${escapeHTML(resultText)}</span>
+        </div>
+        <span class="card-disclosure" aria-hidden="true">${active ? "−" : "+"}</span>
+      </button>
+      ${active ? renderInlinePredictionForm(match, prediction, locked) : ""}
+    </article>
+  `;
+}
+
+function renderInlinePredictionForm(match, prediction, locked) {
+  const disabled = !state.currentUser || locked || state.loading;
+  const homeScore = prediction?.homeScore ?? "";
+  const awayScore = prediction?.awayScore ?? "";
+  const showPenalties =
+    match.knockout &&
+    homeScore !== "" &&
+    awayScore !== "" &&
+    Number(homeScore) === Number(awayScore);
+  const buttonText = locked ? "Palpites encerrados" : !state.currentUser ? "Entre para salvar" : "Salvar palpite";
+
+  return `
+    <form class="inline-prediction-form" data-match-id="${escapeHTML(match.id)}">
+      <div class="inline-score-row">
+        <label>
+          <span>${escapeHTML(match.home)}</span>
+          <input
+            name="homeScore"
+            type="number"
+            min="0"
+            max="30"
+            inputmode="numeric"
+            value="${escapeHTML(homeScore)}"
+            ${disabled ? "disabled" : ""}
+            required
+          />
+        </label>
+        <span class="score-separator">×</span>
+        <label>
+          <span>${escapeHTML(match.away)}</span>
+          <input
+            name="awayScore"
+            type="number"
+            min="0"
+            max="30"
+            inputmode="numeric"
+            value="${escapeHTML(awayScore)}"
+            ${disabled ? "disabled" : ""}
+            required
+          />
+        </label>
+      </div>
+
+      <fieldset class="penalty-box" data-penalty-box ${showPenalties ? "" : "hidden"}>
+        <legend>Vencedor nos penais</legend>
+        <label>
+          <input
+            type="radio"
+            name="penaltyWinner"
+            value="home"
+            data-penalty-winner
+            ${prediction?.penaltyWinner === "home" ? "checked" : ""}
+            ${disabled ? "disabled" : ""}
+          />
+          <span>${escapeHTML(match.home)}</span>
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="penaltyWinner"
+            value="away"
+            data-penalty-winner
+            ${prediction?.penaltyWinner === "away" ? "checked" : ""}
+            ${disabled ? "disabled" : ""}
+          />
+          <span>${escapeHTML(match.away)}</span>
+        </label>
+      </fieldset>
+
+      <button class="primary-button" type="submit" ${disabled ? "disabled" : ""}>
+        <span aria-hidden="true">${locked || !state.currentUser ? "!" : "✓"}</span>
+        ${buttonText}
+      </button>
+      <p class="form-message" data-prediction-message role="alert"></p>
+    </form>
+  `;
 }
 
 function renderTeamLine(team, score, side) {
@@ -465,72 +478,6 @@ function renderTeamLine(team, score, side) {
       <span class="team-score">${scoreText}</span>
     </div>
   `;
-}
-
-function renderPredictionForm() {
-  const match = getSelectedMatch();
-  const user = state.currentUser;
-
-  if (!match || state.apiError) {
-    els.selectedStage.textContent = state.apiError ? "API" : "Sem jogo";
-    els.selectedMatchSummary.innerHTML = `
-      <div class="selected-match-empty">
-        ${escapeHTML(state.apiError || `Nenhum jogo cadastrado para ${formatDate(state.selectedDate)}.`)}
-      </div>
-    `;
-    [els.homeScoreInput, els.awayScoreInput, els.savePredictionButton].forEach((field) => {
-      field.disabled = true;
-      if (field.tagName === "INPUT") field.value = "";
-    });
-    document.querySelectorAll('input[name="penaltyWinner"]').forEach((input) => {
-      input.disabled = true;
-    });
-    els.penaltyBox.hidden = true;
-    els.savePredictionButton.innerHTML = '<span aria-hidden="true">!</span>Indisponível';
-    return;
-  }
-
-  const prediction = state.currentUserPredictions[match.id];
-  const locked = hasMatchStarted(match);
-
-  els.selectedStage.textContent = match.knockout ? "Eliminatória" : "Grupo";
-  els.selectedMatchSummary.innerHTML = `
-    <div class="match-meta">
-      <span>${escapeHTML(match.stage)}</span>
-      <span>${escapeHTML(match.time)} BRT</span>
-      <span>${escapeHTML(match.venue)}</span>
-      <span class="${locked ? "locked-chip" : ""}">${escapeHTML(getBettingStatusText(match))}</span>
-    </div>
-    <div class="selected-versus">
-      <div class="selected-team"><strong>${escapeHTML(match.home)}</strong></div>
-      <span>vs</span>
-      <div class="selected-team"><strong>${escapeHTML(match.away)}</strong></div>
-    </div>
-  `;
-
-  els.homeScoreLabel.textContent = match.home;
-  els.awayScoreLabel.textContent = match.away;
-  els.penaltyHomeLabel.textContent = match.home;
-  els.penaltyAwayLabel.textContent = match.away;
-  els.homeScoreInput.value = prediction?.homeScore ?? "";
-  els.awayScoreInput.value = prediction?.awayScore ?? "";
-  setRadioValue("penaltyWinner", prediction?.penaltyWinner || "");
-
-  const disabled = !user || locked || state.loading;
-  [els.homeScoreInput, els.awayScoreInput, els.savePredictionButton].forEach((field) => {
-    field.disabled = disabled;
-  });
-  document.querySelectorAll('input[name="penaltyWinner"]').forEach((input) => {
-    input.disabled = disabled;
-  });
-
-  els.savePredictionButton.innerHTML = locked
-    ? '<span aria-hidden="true">!</span>Palpites encerrados'
-    : !user
-    ? '<span aria-hidden="true">!</span>Entrar para salvar'
-    : '<span aria-hidden="true">✓</span>Salvar palpite';
-
-  updatePenaltyVisibility();
 }
 
 function renderRanking() {
@@ -567,66 +514,55 @@ function renderRanking() {
     .join("");
 }
 
-function renderResultOptions() {
-  const options = state.matches.map((match) => {
-    const label = `${formatDate(match.date)} - ${match.home} x ${match.away}`;
-    return `<option value="${match.id}">${escapeHTML(label)}</option>`;
-  }).join("");
+function updateInlinePenaltyVisibility(form) {
+  const match = getMatchById(form.dataset.matchId);
+  const penaltyBox = form.querySelector("[data-penalty-box]");
+  if (!match || !penaltyBox) return;
 
-  els.resultMatchSelect.innerHTML = options;
-  els.resultMatchSelect.value = state.selectedResultMatchId;
-}
+  const homeValue = form.querySelector('[name="homeScore"]').value;
+  const awayValue = form.querySelector('[name="awayScore"]').value;
+  const show =
+    match.knockout &&
+    homeValue !== "" &&
+    awayValue !== "" &&
+    Number(homeValue) === Number(awayValue);
 
-function renderResultForm() {
-  const match = getMatchById(state.selectedResultMatchId);
-  if (!match) return;
+  penaltyBox.hidden = !show;
 
-  const result = state.results[match.id];
-
-  els.resultHomeLabel.textContent = match.home;
-  els.resultAwayLabel.textContent = match.away;
-  els.resultPenaltyHomeLabel.textContent = match.home;
-  els.resultPenaltyAwayLabel.textContent = match.away;
-  els.resultHomeInput.value = result?.homeScore ?? "";
-  els.resultAwayInput.value = result?.awayScore ?? "";
-  setRadioValue("resultPenaltyWinner", result?.penaltyWinner || "");
-  updateResultPenaltyVisibility();
-}
-
-function updatePenaltyVisibility() {
-  const match = getSelectedMatch();
-  if (!match) {
-    els.penaltyBox.hidden = true;
-    setRadioValue("penaltyWinner", "");
-    return;
-  }
-
-  const homeScore = Number(els.homeScoreInput.value);
-  const awayScore = Number(els.awayScoreInput.value);
-  const hasBothScores = els.homeScoreInput.value !== "" && els.awayScoreInput.value !== "";
-  els.penaltyBox.hidden = !(match.knockout && hasBothScores && homeScore === awayScore);
-
-  if (els.penaltyBox.hidden) {
-    setRadioValue("penaltyWinner", "");
+  if (!show) {
+    form.querySelectorAll("[data-penalty-winner]").forEach((input) => {
+      input.checked = false;
+    });
   }
 }
 
-function updateResultPenaltyVisibility() {
-  const match = getMatchById(state.selectedResultMatchId);
-  if (!match) {
-    els.resultPenaltyBox.hidden = true;
-    setRadioValue("resultPenaltyWinner", "");
-    return;
-  }
+function readOpenPredictionDraft() {
+  const form = els.matchList.querySelector(".inline-prediction-form");
+  if (!form) return null;
 
-  const homeScore = Number(els.resultHomeInput.value);
-  const awayScore = Number(els.resultAwayInput.value);
-  const hasBothScores = els.resultHomeInput.value !== "" && els.resultAwayInput.value !== "";
-  els.resultPenaltyBox.hidden = !(match.knockout && hasBothScores && homeScore === awayScore);
+  return {
+    awayScore: form.querySelector('[name="awayScore"]')?.value ?? "",
+    homeScore: form.querySelector('[name="homeScore"]')?.value ?? "",
+    matchId: form.dataset.matchId,
+    penaltyWinner: form.querySelector("[data-penalty-winner]:checked")?.value || "",
+  };
+}
 
-  if (els.resultPenaltyBox.hidden) {
-    setRadioValue("resultPenaltyWinner", "");
-  }
+function restoreOpenPredictionDraft(draft) {
+  if (!draft || draft.matchId !== state.selectedMatchId) return;
+
+  const form = els.matchList.querySelector(`.inline-prediction-form[data-match-id="${cssEscape(draft.matchId)}"]`);
+  if (!form) return;
+
+  const homeInput = form.querySelector('[name="homeScore"]');
+  const awayInput = form.querySelector('[name="awayScore"]');
+  if (!homeInput.disabled) homeInput.value = draft.homeScore;
+  if (!awayInput.disabled) awayInput.value = draft.awayScore;
+
+  form.querySelectorAll("[data-penalty-winner]").forEach((input) => {
+    input.checked = input.value === draft.penaltyWinner;
+  });
+  updateInlinePenaltyVisibility(form);
 }
 
 async function apiFetch(path, options = {}) {
@@ -665,12 +601,6 @@ async function apiFetch(path, options = {}) {
   return payload;
 }
 
-function getAdminHeaders() {
-  return {
-    "x-admin-pin": els.adminPinInput.value,
-  };
-}
-
 function handleSessionError(error) {
   if (error.statusCode !== 401) return;
 
@@ -696,19 +626,10 @@ function clearStoredSession() {
 }
 
 function syncSelectedMatchToDate() {
-  const matches = getMatchesByDate(state.selectedDate);
-  const selectedMatchIsInDate = matches.some((match) => match.id === state.selectedMatchId);
-  state.selectedMatchId = selectedMatchIsInDate ? state.selectedMatchId : matches[0]?.id || "";
-}
-
-function syncSelectedResultMatch() {
-  const exists = state.matches.some((match) => match.id === state.selectedResultMatchId);
-  state.selectedResultMatchId = exists ? state.selectedResultMatchId : state.matches[0]?.id || "";
-}
-
-function getSelectedMatch() {
-  if (!state.selectedMatchId) return null;
-  return getMatchById(state.selectedMatchId);
+  const selectedMatchIsInDate = getMatchesByDate(state.selectedDate).some(
+    (match) => match.id === state.selectedMatchId,
+  );
+  if (!selectedMatchIsInDate) state.selectedMatchId = "";
 }
 
 function getMatchById(id) {
@@ -764,24 +685,12 @@ function readScore(homeInput, awayInput) {
   return valid ? { homeScore, awayScore } : null;
 }
 
-function setRadioValue(name, value) {
-  document.querySelectorAll(`input[name="${name}"]`).forEach((input) => {
-    input.checked = input.value === value;
-  });
-}
-
-function getSelectedRadioValue(name) {
-  return document.querySelector(`input[name="${name}"]:checked`)?.value || "";
-}
-
 function setMessage(element, message) {
-  element.textContent = message;
+  if (element) element.textContent = message;
 }
 
-function clearMessages() {
-  [els.authMessage, els.predictionMessage, els.resultMessage].forEach((element) => {
-    element.textContent = "";
-  });
+function clearAuthMessage() {
+  els.authMessage.textContent = "";
 }
 
 function showToast(message) {
@@ -827,6 +736,11 @@ function initials(value) {
     .map((part) => part[0])
     .join("")
     .toLocaleUpperCase("pt-BR");
+}
+
+function cssEscape(value) {
+  if (window.CSS?.escape) return window.CSS.escape(value);
+  return String(value).replace(/["\\]/g, "\\$&");
 }
 
 function escapeHTML(value) {

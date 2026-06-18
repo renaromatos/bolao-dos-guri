@@ -9,6 +9,7 @@ const {
   predictionRowsToMap,
   resultRowsToMap,
 } = require("../server/bolao");
+const { syncResultsIfStale } = require("../server/results-sync");
 
 module.exports = async function handler(req, res) {
   if (!requireMethod(req, res, ["GET"])) return;
@@ -17,6 +18,10 @@ module.exports = async function handler(req, res) {
     const token = getBearerToken(req);
     const currentUser = await getUserByToken(token);
     const matches = await getMatches();
+    const resultsSync = await syncResultsIfStale().catch((error) => ({
+      status: "error",
+      message: error.message,
+    }));
     const [usersResult, predictionsResult, resultsResult, totalPredictionsResult] = await Promise.all([
       query("SELECT id, name, created_at FROM users ORDER BY name ASC"),
       query("SELECT user_id, match_id, home_score, away_score, penalty_winner FROM predictions"),
@@ -36,6 +41,7 @@ module.exports = async function handler(req, res) {
       matchesSource: getMatchesSource(),
       ranking: calculateRanking(usersResult.rows, predictionsResult.rows, resultsResult.rows, matches),
       results: resultRowsToMap(resultsResult.rows),
+      resultsSync,
       serverNow: new Date().toISOString(),
       todayDate: getTodayDate(),
       totalPredictions: totalPredictionsResult.rows[0]?.total || 0,

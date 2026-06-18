@@ -32,6 +32,13 @@ CREATE TABLE IF NOT EXISTS results (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS sync_state (
+  sync_key TEXT PRIMARY KEY,
+  last_started_at TIMESTAMPTZ,
+  last_completed_at TIMESTAMPTZ,
+  last_error TEXT
+);
+
 CREATE INDEX IF NOT EXISTS predictions_match_id_idx ON predictions (match_id);
 CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions (user_id);
 CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions (expires_at);
