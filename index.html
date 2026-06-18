@@ -104,50 +104,6 @@
         </section>
 
         <aside class="side-stack">
-          <section class="panel bet-panel" aria-labelledby="betTitle">
-            <div class="panel-header">
-              <div>
-                <span class="section-kicker">Palpite</span>
-                <h2 id="betTitle">Placar</h2>
-              </div>
-              <span class="match-chip" id="selectedStage">Selecione</span>
-            </div>
-
-            <div id="selectedMatchSummary" class="selected-match"></div>
-
-            <form id="predictionForm" class="score-form">
-              <div class="score-row">
-                <label>
-                  <span id="homeScoreLabel">Mandante</span>
-                  <input id="homeScoreInput" type="number" min="0" max="30" inputmode="numeric" required />
-                </label>
-                <span class="score-separator">×</span>
-                <label>
-                  <span id="awayScoreLabel">Visitante</span>
-                  <input id="awayScoreInput" type="number" min="0" max="30" inputmode="numeric" required />
-                </label>
-              </div>
-
-              <fieldset class="penalty-box" id="penaltyBox" hidden>
-                <legend>Vencedor nos penais</legend>
-                <label>
-                  <input type="radio" name="penaltyWinner" value="home" />
-                  <span id="penaltyHomeLabel">Mandante</span>
-                </label>
-                <label>
-                  <input type="radio" name="penaltyWinner" value="away" />
-                  <span id="penaltyAwayLabel">Visitante</span>
-                </label>
-              </fieldset>
-
-              <button class="primary-button" type="submit" id="savePredictionButton">
-                <span aria-hidden="true">✓</span>
-                Salvar palpite
-              </button>
-              <p class="form-message" id="predictionMessage" role="alert"></p>
-            </form>
-          </section>
-
           <section class="panel ranking-panel" aria-labelledby="rankingTitle">
             <div class="panel-header">
               <div>
@@ -158,56 +114,6 @@
             </div>
 
             <ol class="ranking-list" id="rankingList"></ol>
-          </section>
-
-          <section class="panel admin-panel" aria-labelledby="adminTitle">
-            <details>
-              <summary id="adminTitle">Lançar resultado</summary>
-              <form id="resultForm" class="stack-form admin-form">
-                <label>
-                  PIN admin
-                  <input id="adminPinInput" type="password" autocomplete="off" placeholder="Defina ADMIN_PIN na Vercel" required />
-                </label>
-
-                <label>
-                  Jogo
-                  <select id="resultMatchSelect"></select>
-                </label>
-
-                <div class="score-row compact">
-                  <label>
-                    <span id="resultHomeLabel">Mandante</span>
-                    <input id="resultHomeInput" type="number" min="0" max="30" inputmode="numeric" required />
-                  </label>
-                  <span class="score-separator">×</span>
-                  <label>
-                    <span id="resultAwayLabel">Visitante</span>
-                    <input id="resultAwayInput" type="number" min="0" max="30" inputmode="numeric" required />
-                  </label>
-                </div>
-
-                <fieldset class="penalty-box" id="resultPenaltyBox" hidden>
-                  <legend>Vencedor nos penais</legend>
-                  <label>
-                    <input type="radio" name="resultPenaltyWinner" value="home" />
-                    <span id="resultPenaltyHomeLabel">Mandante</span>
-                  </label>
-                  <label>
-                    <input type="radio" name="resultPenaltyWinner" value="away" />
-                    <span id="resultPenaltyAwayLabel">Visitante</span>
-                  </label>
-                </fieldset>
-
-                <div class="button-row">
-                  <button class="primary-button" type="submit">
-                    <span aria-hidden="true">✓</span>
-                    Salvar
-                  </button>
-                  <button class="ghost-button" type="button" id="clearResultButton">Limpar</button>
-                </div>
-                <p class="form-message" id="resultMessage" role="alert"></p>
-              </form>
-            </details>
           </section>
         </aside>
       </main>
