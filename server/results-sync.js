@@ -1,19 +1,12 @@
 const { query } = require("./db");
 const { getMatches, getTodayDate } = require("./bolao");
 
-const API_BASE_URL = "https://v3.football.api-sports.io";
-const SYNC_KEY = "api-football-results";
+const ESPN_SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard";
+const SYNC_KEY = "espn-results";
 const SYNC_INTERVAL_MS = Number(process.env.RESULTS_SYNC_INTERVAL_MS || 60 * 60 * 1000);
-const COMPLETED_STATUSES = new Set(["AET", "FT", "PEN"]);
 
 async function syncResultsIfStale({ force = false } = {}) {
-  if (!process.env.API_FOOTBALL_KEY) {
-    return {
-      status: "disabled",
-      message: "API_FOOTBALL_KEY não configurada.",
-    };
-  }
-
+  const previousStatus = await getSyncStatus("pending");
   const acquired = await acquireSyncLock(force);
   if (!acquired) {
     return getSyncStatus("fresh");
@@ -21,32 +14,44 @@ async function syncResultsIfStale({ force = false } = {}) {
 
   try {
     const matches = await getMatches();
-    const dates = getSyncDates();
-    const fixturesByDate = await Promise.all(dates.map(fetchFixturesForDate));
-    const fixtures = fixturesByDate.flat();
-    let updated = 0;
+    const range = getSyncRange(!previousStatus.lastCompletedAt);
+    const events = await fetchScoreboardForRange(range.from, range.to);
+    const completedResults = [];
 
-    for (const fixture of fixtures) {
-      if (!COMPLETED_STATUSES.has(fixture.fixture?.status?.short)) continue;
+    for (const event of events) {
+      const externalMatch = normalizeEspnEvent(event);
+      if (!externalMatch?.completed) continue;
 
-      const match = findInternalMatch(matches, fixture);
+      const match = findInternalMatch(matches, externalMatch);
       if (!match) continue;
 
-      const result = normalizeFixtureResult(fixture);
-      if (!result) continue;
+      completedResults.push({
+        awayScore: externalMatch.awayScore,
+        homeScore: externalMatch.homeScore,
+        matchId: match.id,
+        penaltyWinner: externalMatch.penaltyWinner,
+      });
+    }
+
+    if (completedResults.length) {
+      const params = [];
+      const values = completedResults.map((result, index) => {
+        const offset = index * 4;
+        params.push(result.matchId, result.homeScore, result.awayScore, result.penaltyWinner);
+        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, now())`;
+      });
 
       await query(
         `INSERT INTO results (match_id, home_score, away_score, penalty_winner, updated_at)
-         VALUES ($1, $2, $3, $4, now())
+         VALUES ${values.join(", ")}
          ON CONFLICT (match_id)
          DO UPDATE SET
            home_score = EXCLUDED.home_score,
            away_score = EXCLUDED.away_score,
            penalty_winner = EXCLUDED.penalty_winner,
            updated_at = now()`,
-        [match.id, result.homeScore, result.awayScore, result.penaltyWinner],
+        params,
       );
-      updated += 1;
     }
 
     await query(
@@ -59,8 +64,9 @@ async function syncResultsIfStale({ force = false } = {}) {
 
     return {
       status: "updated",
-      checked: fixtures.length,
-      updated,
+      provider: "espn",
+      checked: events.length,
+      updated: completedResults.length,
     };
   } catch (error) {
     await query(
@@ -100,18 +106,22 @@ async function getSyncStatus(status = "fresh") {
   const row = rows[0] || {};
   return {
     status,
+    provider: "espn",
     lastStartedAt: row.last_started_at || null,
     lastCompletedAt: row.last_completed_at || null,
     lastError: row.last_error || null,
   };
 }
 
-function getSyncDates() {
+function getSyncRange(backfill) {
   const today = getTodayDate();
   const todayDate = new Date(`${today}T12:00:00-03:00`);
   const yesterdayDate = new Date(todayDate.getTime() - 24 * 60 * 60 * 1000);
 
-  return [formatDateInSaoPaulo(yesterdayDate), today];
+  return {
+    from: backfill ? "2026-06-11" : formatDateInSaoPaulo(yesterdayDate),
+    to: today,
+  };
 }
 
 function formatDateInSaoPaulo(date) {
@@ -125,37 +135,66 @@ function formatDateInSaoPaulo(date) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-async function fetchFixturesForDate(date) {
-  const url = new URL(`${API_BASE_URL}/fixtures`);
-  url.searchParams.set("date", date);
-  url.searchParams.set("league", "1");
-  url.searchParams.set("season", "2026");
-  url.searchParams.set("timezone", "America/Sao_Paulo");
+async function fetchScoreboardForDate(date) {
+  return fetchScoreboardForRange(date, date);
+}
+
+async function fetchScoreboardForRange(from, to) {
+  const url = new URL(ESPN_SCOREBOARD_URL);
+  const compactFrom = from.replaceAll("-", "");
+  const compactTo = to.replaceAll("-", "");
+  url.searchParams.set("dates", from === to ? compactFrom : `${compactFrom}-${compactTo}`);
+  url.searchParams.set("limit", "200");
 
   const response = await fetch(url, {
     headers: {
       Accept: "application/json",
-      "x-apisports-key": process.env.API_FOOTBALL_KEY,
+      "User-Agent": "bolao-dos-guri/1.0",
     },
   });
 
   if (!response.ok) {
-    throw new Error(`API-Football respondeu ${response.status}.`);
+    throw new Error(`ESPN respondeu ${response.status}.`);
   }
 
   const payload = await response.json();
-  const apiErrors = payload.errors && Object.keys(payload.errors).length ? JSON.stringify(payload.errors) : "";
-  if (apiErrors) {
-    throw new Error(`API-Football: ${apiErrors}`);
-  }
-
-  return Array.isArray(payload.response) ? payload.response : [];
+  return Array.isArray(payload.events) ? payload.events : [];
 }
 
-function findInternalMatch(matches, fixture) {
-  const kickoff = new Date(fixture.fixture?.date);
-  const home = canonicalTeamName(fixture.teams?.home?.name);
-  const away = canonicalTeamName(fixture.teams?.away?.name);
+function normalizeEspnEvent(event) {
+  const competition = event.competitions?.[0];
+  const home = competition?.competitors?.find((competitor) => competitor.homeAway === "home");
+  const away = competition?.competitors?.find((competitor) => competitor.homeAway === "away");
+  const homeScore = Number(home?.score);
+  const awayScore = Number(away?.score);
+
+  if (!competition || !home || !away || !Number.isInteger(homeScore) || !Number.isInteger(awayScore)) {
+    return null;
+  }
+
+  const penaltyHome = Number(home.shootoutScore);
+  const penaltyAway = Number(away.shootoutScore);
+  let penaltyWinner = null;
+
+  if (Number.isInteger(penaltyHome) && Number.isInteger(penaltyAway) && penaltyHome !== penaltyAway) {
+    penaltyWinner = penaltyHome > penaltyAway ? "home" : "away";
+  }
+
+  return {
+    away: away.team?.displayName || away.team?.name || "",
+    awayScore,
+    completed: event.status?.type?.completed === true,
+    home: home.team?.displayName || home.team?.name || "",
+    homeScore,
+    kickoffAt: event.date,
+    penaltyWinner,
+  };
+}
+
+function findInternalMatch(matches, externalMatch) {
+  const kickoff = new Date(externalMatch.kickoffAt);
+  const home = canonicalTeamName(externalMatch.home);
+  const away = canonicalTeamName(externalMatch.away);
   const exactTimeCandidates = matches.filter(
     (match) => Math.abs(new Date(match.kickoffAt).getTime() - kickoff.getTime()) <= 15 * 60 * 1000,
   );
@@ -184,8 +223,8 @@ function canonicalTeamName(value) {
   const aliases = {
     "africa do sul": "south africa",
     "arabia saudita": "saudi arabia",
-    "bosnia e herzegovina": "bosnia and herzegovina",
-    "bosnia herzegovina": "bosnia and herzegovina",
+    "bosnia e herzegovina": "bosnia herzegovina",
+    "bosnia and herzegovina": "bosnia herzegovina",
     "cabo verde": "cape verde",
     "catar": "qatar",
     "coreia do sul": "south korea",
@@ -200,7 +239,6 @@ function canonicalTeamName(value) {
     "paises baixos": "netherlands",
     "rd congo": "dr congo",
     "republica democratica do congo": "dr congo",
-    "south korea": "south korea",
     "suecia": "sweden",
     "suica": "switzerland",
     "tchequia": "czechia",
@@ -212,32 +250,11 @@ function canonicalTeamName(value) {
   return aliases[normalized] || normalized;
 }
 
-function normalizeFixtureResult(fixture) {
-  const homeScore = Number(fixture.goals?.home);
-  const awayScore = Number(fixture.goals?.away);
-
-  if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore)) {
-    return null;
-  }
-
-  const penaltyHome = Number(fixture.score?.penalty?.home);
-  const penaltyAway = Number(fixture.score?.penalty?.away);
-  let penaltyWinner = null;
-
-  if (Number.isInteger(penaltyHome) && Number.isInteger(penaltyAway) && penaltyHome !== penaltyAway) {
-    penaltyWinner = penaltyHome > penaltyAway ? "home" : "away";
-  }
-
-  return {
-    awayScore,
-    homeScore,
-    penaltyWinner,
-  };
-}
-
 module.exports = {
   canonicalTeamName,
+  fetchScoreboardForDate,
+  fetchScoreboardForRange,
   findInternalMatch,
-  normalizeFixtureResult,
+  normalizeEspnEvent,
   syncResultsIfStale,
 };
